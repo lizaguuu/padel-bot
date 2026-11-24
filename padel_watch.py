@@ -126,10 +126,12 @@ def collect() -> dict:
     courts = load_courts()
     now = datetime.now(TZ)
     result = {}
+    ok_days = 0
     for i in range(DAYS_AHEAD + 1):
         day = (now + timedelta(days=i)).date()
         try:
             day_slots = fetch_day(day)
+            ok_days += 1
         except Exception as e:
             print(f"[warn] {day}: {e}")
             continue
@@ -149,6 +151,8 @@ def collect() -> dict:
                 "court": court["name"],
             }
         time.sleep(0.3)  # вежливо к API
+    if ok_days == 0:
+        raise RuntimeError("Playtomic недоступен — ни один день не загрузился")
     return result
 
 
