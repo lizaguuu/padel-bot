@@ -234,6 +234,10 @@ def chunks(text: str, limit: int = 3800):
 def main():
     args = sys.argv[1:]
 
+    if not os.environ.get("TELEGRAM_TOKEN") and "--dump" not in args:
+        print("TELEGRAM_TOKEN ещё не добавлен в Secrets — пропускаю запуск.")
+        return
+
     if "--test" in args:
         send_telegram(f"✅ Padel-бот подключён. Слежу за <b>{CLUB_NAME}</b>.")
         print("Тестовое сообщение отправлено.")

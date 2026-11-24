@@ -1,0 +1,65 @@
+name: diagnose
+
+# Служебная проверка: сохраняет ответ Playtomic в diagnose.txt,
+# чтобы сверить время слотов с сайтом. Запускается при изменении diagnose.trigger.
+on:
+  push:
+    paths: ["diagnose.trigger"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Dump
+        run: |
+          {
+            echo "=== $(TZ=Europe/Berlin date) ==="
+            python - <<'EOF'
+          import json, urllib.request, urllib.parse
+          from datetime import datetime, timedelta
+          from zoneinfo import ZoneInfo
+          H = {"User-Agent": "Mozilla/5.0 (padel-watch; personal use)", "Accept": "application/json"}
+          T = "24234663-6264-471c-91fe-20fa80cf52d5"
+          def get(u):
+              try:
+                  with urllib.request.urlopen(urllib.request.Request(u, headers=H), timeout=30) as r:
+                      return r.status, r.read().decode()
+              except Exception as e:
+                  return "ERR", repr(e)
+          st, body = get(f"https://api.playtomic.io/v1/tenants/{T}")
+          print("TENANT", st)
+          try:
+              t = json.loads(body)
+              print("timezone:", (t.get("address") or {}).get("timezone"))
+              for r in t.get("resources", []):
+                  print(" court:", r.get("resource_id"), "|", r.get("name"), "|", r.get("properties"))
+          except Exception:
+              print(body[:1500])
+          d = (datetime.now(ZoneInfo("Europe/Berlin")) + timedelta(days=1)).date()
+          q = urllib.parse.urlencode({"sport_id": "PADEL", "tenant_id": T,
+               "start_min": f"{d}T00:00:00", "start_max": f"{d}T23:59:59"})
+          st, body = get(f"https://api.playtomic.io/v1/availability?{q}")
+          print("\nAVAILABILITY", d, st)
+          print(body[:6000])
+          EOF
+            echo; echo "=== --dump (UTC=1) ==="
+            python padel_watch.py --dump || true
+            echo; echo "=== --dump (UTC=0) ==="
+            API_TIMES_ARE_UTC=0 python padel_watch.py --dump || true
+          } > diagnose.txt 2>&1
+      - name: Commit result
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diagnose.txt
+          git commit -m "diagnose result [skip ci]" || echo "no changes"
+          git push
