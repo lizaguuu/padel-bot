@@ -17,7 +17,11 @@ Padel-Watcher: следит за свободными кортами в Playtomi
   python padel_watch.py --dump   # просто вывести найденные слоты в консоль (без Telegram)
 """
 
+from __future__ import annotations
+
 import json
+import shutil
+import subprocess
 import os
 import sys
 import time
@@ -52,12 +56,30 @@ HEADERS = {
 WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
 
+def http_request(url: str, headers: dict | None = None, data: bytes | None = None) -> bytes:
+    """HTTP через curl (на Mac он использует системные сертификаты), иначе urllib."""
+    headers = headers or {}
+    if shutil.which("curl"):
+        cmd = ["curl", "-sS", "--fail-with-body", "--max-time", "30"]
+        for k, v in headers.items():
+            cmd += ["-H", f"{k}: {v}"]
+        if data is not None:
+            cmd += ["--data-binary", "@-"]
+        cmd.append(url)
+        r = subprocess.run(cmd, input=data, capture_output=True)
+        if r.returncode != 0:
+            code = "403" if b"403" in (r.stderr + r.stdout)[:2000] else str(r.returncode)
+            raise RuntimeError(f"HTTP ошибка ({code}): {r.stderr.decode(errors='replace').strip()[:200]}")
+        return r.stdout
+    req = urllib.request.Request(url, headers=headers, data=data)
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return r.read()
+
+
 def http_get_json(url: str, params: dict | None = None):
     if params:
         url = f"{url}?{urllib.parse.urlencode(params)}"
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return json.loads(r.read().decode("utf-8"))
+    return json.loads(http_request(url, HEADERS).decode("utf-8"))
 
 
 # Корты клуба (проверено по сайту Playtomic 24.11.2026).
@@ -170,8 +192,7 @@ CHAT_ID_FILE = os.environ.get("CHAT_ID_FILE", "chat_id.txt")
 def find_group_chat_id(token: str) -> str | None:
     """Ищет группу, в которую добавили бота (через getUpdates)."""
     url = f"https://api.telegram.org/bot{token}/getUpdates"
-    with urllib.request.urlopen(url, timeout=30) as r:
-        updates = json.loads(r.read().decode()).get("result", [])
+    updates = json.loads(http_request(url).decode()).get("result", [])
     print(f"getUpdates: {len(updates)} обновлений")
     for upd in reversed(updates):
         for field in ("my_chat_member", "message", "edited_message", "channel_post"):
@@ -212,10 +233,8 @@ def send_telegram(text: str) -> None:
         "parse_mode": "HTML",
         "disable_web_page_preview": "true",
     }).encode()
-    req = urllib.request.Request(
-        f"https://api.telegram.org/bot{token}/sendMessage", data=body)
-    with urllib.request.urlopen(req, timeout=30) as r:
-        r.read()
+    http_request(f"https://api.telegram.org/bot{token}/sendMessage",
+                 {"Content-Type": "application/x-www-form-urlencoded"}, body)
 
 
 def chunks(text: str, limit: int = 3800):
@@ -259,7 +278,7 @@ def main():
             except Exception as e:
                 print(f"[warn] проверка не удалась: {e}")
                 report_error(str(e))
-            if time.monotonic() + every > deadline:
+            if total and time.monotonic() + every > deadline:
                 break
             time.sleep(max(0, every - (time.monotonic() - started)))
         return
