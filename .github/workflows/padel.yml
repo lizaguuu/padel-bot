@@ -36,8 +36,8 @@ jobs:
             state.json
             chat_id.txt
             error.txt
-          key: padel-state-${{ github.run_id }}
-          restore-keys: padel-state-
+          key: padel-state-v2-${{ github.run_id }}
+          restore-keys: padel-state-v2-
 
       - name: Check Playtomic
         env:
@@ -59,4 +59,4 @@ jobs:
             state.json
             chat_id.txt
             error.txt
-          key: padel-state-${{ github.run_id }}
+          key: padel-state-v2-${{ github.run_id }}

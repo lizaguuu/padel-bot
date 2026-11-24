@@ -172,9 +172,13 @@ def find_group_chat_id(token: str) -> str | None:
     url = f"https://api.telegram.org/bot{token}/getUpdates"
     with urllib.request.urlopen(url, timeout=30) as r:
         updates = json.loads(r.read().decode()).get("result", [])
+    print(f"getUpdates: {len(updates)} обновлений")
     for upd in reversed(updates):
         for field in ("my_chat_member", "message", "edited_message", "channel_post"):
-            chat = (upd.get(field) or {}).get("chat") or {}
+            obj = upd.get(field) or {}
+            chat = obj.get("chat") or {}
+            if obj.get("migrate_to_chat_id"):
+                return str(obj["migrate_to_chat_id"])
             if chat.get("type") in ("group", "supergroup"):
                 print(f"Найдена группа: «{chat.get('title')}», chat_id={chat['id']}")
                 return str(chat["id"])
@@ -192,9 +196,8 @@ def get_chat_id(token: str) -> str:
             return saved
     found = find_group_chat_id(token)
     if not found:
-        raise SystemExit(
-            "Не нашёл группу. Добавь бота в группу и напиши там что-нибудь, "
-            "например /start@имя_бота, потом запусти ещё раз.")
+        raise RuntimeError(
+            "Не нашёл группу. Напиши в группе /start@mitte_padel_courts_bot")
     with open(CHAT_ID_FILE, "w") as f:
         f.write(found)
     return found
