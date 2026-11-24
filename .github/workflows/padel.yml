@@ -1,13 +1,8 @@
 name: padel-watch
 
 on:
-  schedule:
-    # Запуск каждые 10 минут; каждый запуск сам проверяет раз в минуту ~20 минут.
-    # Пока один запуск работает, следующий ждёт в очереди — получается непрерывно.
-    - cron: "*/10 * * * *"
-  push:
-    branches: [main]
-    paths: ["padel_watch.py", ".github/workflows/padel.yml"]
+  # Расписание выключено: Playtomic блокирует серверы GitHub (HTTP 403).
+  # Бот работает на MacBook (файл padel-bot.command).
   workflow_dispatch:
     inputs:
       mode:
