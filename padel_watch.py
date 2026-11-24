@@ -32,22 +32,22 @@ CLUB_URL = "https://playtomic.com/clubs/mitte-the-cabrio"
 CLUB_NAME = "Mitte Cabrio"
 TZ = ZoneInfo("Europe/Berlin")
 
-DAYS_AHEAD = 14                 # сколько дней вперёд смотреть
+DAYS_AHEAD = 13                 # сколько дней вперёд смотреть
 WEEKDAY_FROM = "17:30"          # будни: слоты, начинающиеся не раньше этого времени
 WEEKEND_FROM = "00:00"          # выходные: любое время
 DURATIONS = {60, 90, 120}       # какие длительности игры интересны (минуты)
 ONLY_DOUBLE_COURTS = True       # True = только корты на 4 игроков (double)
 CHECK_EVERY_SEC = 60            # как часто проверять внутри одного запуска (сек)
 
-# Playtomic отдаёт время слотов в UTC. Если после первого запуска с --dump
-# время отличается от приложения ровно на 1 час — поставь False.
+# Playtomic отдаёт время слотов в UTC (проверено: "06:00" = открытие в 07:00).
 API_TIMES_ARE_UTC = os.environ.get("API_TIMES_ARE_UTC", "1") != "0"
 # -------------------------------------------
 
-API = "https://api.playtomic.io/v1"
+AVAILABILITY_URL = "https://playtomic.com/api/clubs/availability"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (padel-watch; personal use)",
     "Accept": "application/json",
+    "Referer": CLUB_URL,
 }
 WEEKDAYS_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
 
@@ -60,22 +60,22 @@ def http_get_json(url: str, params: dict | None = None):
         return json.loads(r.read().decode("utf-8"))
 
 
-def load_courts() -> dict:
-    """resource_id -> {name, double}"""
-    courts = {}
-    try:
-        tenant = http_get_json(f"{API}/tenants/{TENANT_ID}")
-        for res in tenant.get("resources", []):
-            props = res.get("properties") or {}
-            size = str(props.get("resource_size", "")).lower()
-            name = res.get("name", "Court")
-            courts[res.get("resource_id")] = {
-                "name": name,
-                "double": size != "single" and "single" not in name.lower(),
-            }
-    except Exception as e:  # если не получилось — просто не фильтруем
-        print(f"[warn] не удалось загрузить список кортов: {e}")
-    return courts
+# Корты клуба (проверено по сайту Playtomic 24.11.2026).
+COURTS = {
+    "791eebbc-8619-42da-9aa8-d82623aac207": "1 • Double (1st Floor)",
+    "bbe38091-21ad-4232-8569-db2144db27f9": "2 • Double (1st Floor)",
+    "abbc9711-39e0-4460-914b-ca57efaa46c1": "3 • Double (1st Floor)",
+    "723feed7-a142-440e-8b97-e639d39bd4f4": "4 • Double (1st Floor)",
+    "0b80603b-be4a-414d-bb21-0f12c246ddec": "6 • Double (5th Floor)",
+    "5ce3f40c-99bd-48a6-9117-460b4e133893": "7 • Double (5th Floor)",
+    "8283064b-4552-406a-9970-b305717b26c5": "8 • Double (5th Floor)",
+    "b1556e5b-d4f1-4335-98df-299c8fc86c6c": "9 • Double (5th Floor)",
+}
+SINGLE_COURTS = {
+    "d2731550-e8ad-4d09-8ab4-0bb633c80b50",  # A • Single
+    "759403bb-5f15-40f9-aca4-445ae55ea0f3",  # B • Single
+    "0b972e5b-874e-4be2-98a5-3260d0433d16",  # C • Single
+}
 
 
 def wanted(local_dt: datetime) -> bool:
@@ -87,20 +87,8 @@ def wanted(local_dt: datetime) -> bool:
 
 def fetch_day(day: date) -> list[dict]:
     """Все свободные слоты на один локальный день."""
-    local_start = datetime.combine(day, datetime.min.time(), TZ)
-    local_end = local_start + timedelta(hours=23, minutes=59, seconds=59)
-    if API_TIMES_ARE_UTC:
-        q_start = local_start.astimezone(timezone.utc)
-        q_end = local_end.astimezone(timezone.utc)
-    else:
-        q_start, q_end = local_start, local_end
-    params = {
-        "sport_id": "PADEL",
-        "tenant_id": TENANT_ID,
-        "start_min": q_start.strftime("%Y-%m-%dT%H:%M:%S"),
-        "start_max": q_end.strftime("%Y-%m-%dT%H:%M:%S"),
-    }
-    data = http_get_json(f"{API}/availability", params)
+    params = {"tenant_id": TENANT_ID, "date": day.isoformat(), "sport_id": "PADEL"}
+    data = http_get_json(AVAILABILITY_URL, params)
 
     slots = []
     for block in data or []:
@@ -123,7 +111,6 @@ def fetch_day(day: date) -> list[dict]:
 
 def collect() -> dict:
     """key -> slot. Ключ: '<resource_id>|<локальное время>|<длительность>'."""
-    courts = load_courts()
     now = datetime.now(TZ)
     result = {}
     ok_days = 0
@@ -140,9 +127,9 @@ def collect() -> dict:
                 continue
             if s["duration"] not in DURATIONS or not wanted(s["start"]):
                 continue
-            court = courts.get(s["resource_id"], {"name": "Корт", "double": True})
-            if ONLY_DOUBLE_COURTS and courts and not court["double"]:
+            if ONLY_DOUBLE_COURTS and s["resource_id"] in SINGLE_COURTS:
                 continue
+            court = {"name": COURTS.get(s["resource_id"], "Корт")}
             key = f"{s['resource_id']}|{s['start'].strftime('%Y-%m-%dT%H:%M')}|{s['duration']}"
             result[key] = {
                 "start": s["start"].strftime("%Y-%m-%dT%H:%M"),
