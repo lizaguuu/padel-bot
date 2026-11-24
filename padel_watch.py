@@ -114,6 +114,7 @@ def collect() -> dict:
     now = datetime.now(TZ)
     result = {}
     ok_days = 0
+    last_err = ""
     for i in range(DAYS_AHEAD + 1):
         day = (now + timedelta(days=i)).date()
         try:
@@ -121,6 +122,7 @@ def collect() -> dict:
             ok_days += 1
         except Exception as e:
             print(f"[warn] {day}: {e}")
+            last_err = str(e)
             continue
         for s in day_slots:
             if s["start"] <= now or s["start"].date() != day:
@@ -139,7 +141,7 @@ def collect() -> dict:
             }
         time.sleep(0.3)  # вежливо к API
     if ok_days == 0:
-        raise RuntimeError("Playtomic недоступен — ни один день не загрузился")
+        raise RuntimeError(f"Playtomic недоступен: {last_err}")
     return result
 
 
@@ -250,14 +252,33 @@ def main():
             started = time.monotonic()
             try:
                 check_once()
+                report_error(None)
             except Exception as e:
                 print(f"[warn] проверка не удалась: {e}")
+                report_error(str(e))
             if time.monotonic() + every > deadline:
                 break
             time.sleep(max(0, every - (time.monotonic() - started)))
         return
 
     check_once()
+
+
+ERROR_FILE = os.environ.get("ERROR_FILE", "error.txt")
+
+
+def report_error(err):
+    """Один раз пишет в группу, когда Playtomic недоступен, и один раз — когда снова ок."""
+    had_error = os.path.exists(ERROR_FILE)
+    try:
+        if err and not had_error:
+            send_telegram(f"⚠️ Бот не может получить данные из Playtomic:\n<code>{err[:300]}</code>")
+            open(ERROR_FILE, "w").write(err)
+        elif not err and had_error:
+            send_telegram("✅ Связь с Playtomic восстановлена, продолжаю следить.")
+            os.remove(ERROR_FILE)
+    except Exception as e:
+        print(f"[warn] не удалось отправить статус: {e}")
 
 
 def check_once():

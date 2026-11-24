@@ -5,6 +5,9 @@ on:
     # Запуск каждые 10 минут; каждый запуск сам проверяет раз в минуту ~20 минут.
     # Пока один запуск работает, следующий ждёт в очереди — получается непрерывно.
     - cron: "*/10 * * * *"
+  push:
+    branches: [main]
+    paths: ["padel_watch.py", ".github/workflows/padel.yml"]
   workflow_dispatch:
     inputs:
       mode:
@@ -32,6 +35,7 @@ jobs:
           path: |
             state.json
             chat_id.txt
+            error.txt
           key: padel-state-${{ github.run_id }}
           restore-keys: padel-state-
 
@@ -54,4 +58,5 @@ jobs:
           path: |
             state.json
             chat_id.txt
+            error.txt
           key: padel-state-${{ github.run_id }}
