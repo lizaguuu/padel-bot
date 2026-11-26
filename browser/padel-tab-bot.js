@@ -4,7 +4,7 @@
   const TENANT = "24234663-6264-471c-91fe-20fa80cf52d5";
   const CLUB_URL = "https://playtomic.com/clubs/mitte-the-cabrio";
   const CHAT_ID = "-5365069771";
-  const EVERY_SEC = 90, DAYS_AHEAD = 13, WEEKDAY_FROM = 17 * 60 + 30, MAX_MSGS = 10;
+  const EVERY_SEC = 90, DAYS_AHEAD = 13, WEEKDAY_FROM = 17 * 60 + 30, LATEST_START = 21 * 60, MAX_MSGS = 10;
   const DURATIONS = [60, 90, 120];
   const COURTS = {
     "791eebbc-8619-42da-9aa8-d82623aac207": "Court 1 · 1. OG",
@@ -77,6 +77,7 @@
             if (L.date !== day) continue;
             const weekend = L.wd === 0 || L.wd === 6;
             if (!weekend && L.min < WEEKDAY_FROM) continue;
+            if (L.min > LATEST_START) continue; // spätester Start: 21:00
             found[`${b.resource_id}|${L.date}T${L.hm}|${s.duration}`] = {
               rid: b.resource_id, court: COURTS[b.resource_id] || "Double Court",
               date: L.date, wd: L.wd, hm: L.hm, dur: s.duration, price: s.price, iso: t.toISOString() };
@@ -120,7 +121,7 @@
       return `• ${dayLabel(s)} ${s.hm} · ${s.court} · ` +
         a.map(x => `<a href="${bookUrl(x.rid, x.iso, x.dur)}">${x.dur} Min</a>`).join(" / ");
     });
-    let text = `🎾 <b>Mitte Cabrio</b>: Bot gestartet.\nAktuell frei: ${lines.length} Slots auf Double Courts (Mo–Fr ab 17:30, Sa–So ganztägig). Auf die Dauer tippen zum Buchen:\n\n` + lines.join("\n") +
+    let text = `🎾 <b>Mitte Cabrio</b>: Bot gestartet.\nAktuell frei: ${lines.length} Slots auf Double Courts (Mo–Fr 17:30–21:00, Sa–So bis 21:00). Auf die Dauer tippen zum Buchen:\n\n` + lines.join("\n") +
       `\n\nAb jetzt melde ich nur neu frei gewordene Plätze.`;
     while (text.length > 3800) {
       const cut = text.lastIndexOf("\n•", 3800);
